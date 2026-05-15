@@ -281,7 +281,7 @@ func (s *ServerState) proxyHandler(w http.ResponseWriter, r *http.Request) {
 			log.Printf("🔑 Key [%d] %d — disabled. body: %s", idx, resp.StatusCode, body)
 			pool.Disable(idx)
 			if pool.ActiveCount() == 0 {
-				http.Error(w, "hydra-proxy: all keys are invalid or revoked", http.StatusServiceUnavailable)
+				http.Error(w, "alvus: all keys are invalid or revoked", http.StatusServiceUnavailable)
 				return
 			}
 			continue
@@ -322,7 +322,7 @@ func (s *ServerState) proxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Error(w, "hydra-proxy: exhausted all retries", http.StatusServiceUnavailable)
+	http.Error(w, "alvus: exhausted all retries", http.StatusServiceUnavailable)
 }
 
 // ── .env Watcher ──────────────────────────────
@@ -373,7 +373,7 @@ func main() {
 	stop := make(chan struct{})
 	go watchEnvFile(state, stop)
 
-	log.Printf("🐍 Hydra-Proxy :%s → %s (%d keys)", cfg.Port, cfg.TargetBase, len(pool.keys))
+	log.Printf("⚡ Alvus :%s → %s (%d keys)", cfg.Port, cfg.TargetBase, len(pool.keys))	
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, state.mux))
 }
 

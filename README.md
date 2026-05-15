@@ -1,7 +1,7 @@
-# 🐍 Hydra-Proxy
+# ⚡ Alvus
 
-> **Cut one key, two more take its place.**
-> A zero-dependency Go proxy that silently absorbs 429s and keeps your AI agent running.
+> **~2 MB binary. Zero dependencies. Zero 429s.**
+> A lightweight Go proxy that silently absorbs rate limit errors and keeps your AI agent running.
 
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat-square&logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](LICENSE)
@@ -26,14 +26,14 @@ If you use free-tier providers like **NVIDIA NIM**, this happens constantly. Fre
 
 ## The Solution
 
-Hydra-Proxy sits between your agent and the upstream API. You give it a pool of keys. It handles everything else — round-robin distribution, per-key cooldowns, automatic retries, streaming passthrough. Your agent never sees a 429.
+Alvus sits between your agent and the upstream API. You give it a pool of keys. It handles everything else — round-robin distribution, per-key cooldowns, automatic retries, streaming passthrough. Your agent never sees a 429.
 
 ```
 Any OpenAI-compatible agent or IDE
               │
               ▼
    ┌─────────────────────┐
-   │     Hydra-Proxy     │  ← localhost:3000
+   │        Alvus        │  ← localhost:3000
    │                     │
    │  [key1] ✅ ready    │
    │  [key2] ✅ ready    │  ──→  NVIDIA NIM / any OpenAI-compatible API
@@ -43,11 +43,13 @@ Any OpenAI-compatible agent or IDE
 
 3 keys × 40 RPM = 120+ effective RPM. The math is simple. The setup is simpler.
 
+> **Idle RAM usage: ~2 MB.** Alvus is a single static binary with no runtime. It won't compete with your models for memory.
+
 ---
 
 ## Works With Everything
 
-If it speaks OpenAI-compatible API, it works with Hydra-Proxy.
+If it speaks OpenAI-compatible API, it works with Alvus.
 
 | Tool                                             | Type              | Setup                               |
 | ------------------------------------------------ | ----------------- | ----------------------------------- |
@@ -75,6 +77,7 @@ If it speaks OpenAI-compatible API, it works with Hydra-Proxy.
 | 🪶 **Zero dependencies**       | Pure Go stdlib. One file. One binary                                        |
 | 🔧 **`.env` support**          | Built-in parser — no `godotenv`, no extras                                  |
 | 🖥️ **Runs anywhere**           | linux/amd64, arm64, arm, **386** — including Pi Zero and older x86 hardware |
+| 💾 **~2 MB idle RAM**          | Static binary, no runtime, won't compete with your models for memory        |
 
 ---
 
@@ -85,19 +88,19 @@ If it speaks OpenAI-compatible API, it works with Hydra-Proxy.
 **Build from source** (requires Go 1.21+):
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/hydra-proxy.git
-cd hydra-proxy
-go build -o hydra-proxy main.go
+git clone https://github.com/YOUR_USERNAME/alvus.git
+cd alvus
+go build -o alvus main.go
 ```
 
 **Cross-compile for a remote server** (e.g. Raspberry Pi Zero, 32-bit x86):
 
 ```bash
 # Pi Zero / older ARM
-GOOS=linux GOARCH=arm CGO_ENABLED=0 go build -o hydra-proxy main.go
+GOOS=linux GOARCH=arm CGO_ENABLED=0 go build -o alvus main.go
 
 # 32-bit x86 (Atom, old netbooks, salvaged hardware)
-GOOS=linux GOARCH=386 CGO_ENABLED=0 go build -o hydra-proxy main.go
+GOOS=linux GOARCH=386 CGO_ENABLED=0 go build -o alvus main.go
 ```
 
 The binary is fully static — drop it on the machine and run it. No runtime, no dependencies, no install step.
@@ -133,11 +136,11 @@ Real environment variables take precedence over `.env` — useful for systemd or
 ### 3. Run
 
 ```bash
-./hydra-proxy
+./alvus
 ```
 
 ```
-🐍 Hydra-Proxy started on :3000
+⚡ Alvus started on :3000
    Target  : https://integrate.api.nvidia.com/v1
    Keys    : 3 loaded
    Cooldown: 60s per key on 429
@@ -256,12 +259,12 @@ TARGET_BASE_URL=https://your-provider.com/v1
 
 ```ini
 [Unit]
-Description=Hydra-Proxy
+Description=Alvus
 After=network.target
 
 [Service]
-ExecStart=/usr/local/bin/hydra-proxy
-WorkingDirectory=/etc/hydra-proxy
+ExecStart=/usr/local/bin/alvus
+WorkingDirectory=/etc/alvus
 Restart=on-failure
 RestartSec=5
 
@@ -269,11 +272,11 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Put your `.env` in `/etc/hydra-proxy/`. Reload and start:
+Put your `.env` in `/etc/alvus/`. Reload and start:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable --now hydra-proxy
+sudo systemctl enable --now alvus
 ```
 
 ---
@@ -284,22 +287,25 @@ sudo systemctl enable --now hydra-proxy
 No. Download a prebuilt binary from [Releases](../../releases).
 
 **Are my keys safe?**
-Keys live in `.env` on your machine and are only ever sent to the upstream provider. Hydra-Proxy logs key indices, never key values.
+Keys live in `.env` on your machine and are only ever sent to the upstream provider. Alvus logs key indices, never key values.
 
 **What if ALL keys are cooling?**
-The proxy waits for the soonest key to become available and retries, up to 10 times. If everything stays exhausted, it returns `503`. In practice, with 3 keys and a 60s window this is very hard to trigger.
+Alvus waits for the soonest key to become available and retries, up to 10 times. If everything stays exhausted, it returns `503`. In practice, with 3 keys and a 60s window this is very hard to trigger.
 
 **Can I reload keys without restarting?**
-Not yet — planned for a future release. For now, restart the binary after editing `.env`. With systemd: `sudo systemctl restart hydra-proxy`.
+Not yet — planned for a future release. For now, restart the binary after editing `.env`. With systemd: `sudo systemctl restart alvus`.
 
 **Does it work on a Raspberry Pi Zero / 32-bit hardware?**
 Yes. Prebuilt binaries include `linux/arm` and `linux/386`. The binary is fully static — no runtime needed.
+
+**How much memory does it use?**
+Around 2 MB at idle. It's a single static Go binary with no runtime overhead — you won't notice it sitting next to a running model.
 
 ---
 
 ## Roadmap
 
-- [x] Hot-reload when .env changes(no restart needed)
+- [x] Hot-reload when .env changes (no restart needed)
 - [ ] Per-key request counters in `/health`
 - [ ] Web dashboard (opt-in, zero-dep binary stays the same)
 
