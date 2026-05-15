@@ -299,7 +299,7 @@ Yes. Prebuilt binaries include `linux/arm` and `linux/386`. The binary is fully 
 
 ## Roadmap
 
-- [ ] Hot-reload key pool via `SIGHUP` (no restart needed)
+- [x] Hot-reload when .env changes(no restart needed)
 - [ ] Per-key request counters in `/health`
 - [ ] Web dashboard (opt-in, zero-dep binary stays the same)
 
