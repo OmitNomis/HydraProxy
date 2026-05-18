@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -17,18 +18,22 @@ import (
 // ── Key Pool ──────────────────────────────────
 
 type KeyPool struct {
-	keys      []string
-	cooldowns []time.Time
-	disabled  []bool
-	mu        sync.Mutex
-	counter   uint64
+	keys         []string
+	cooldowns    []time.Time
+	disabled     []bool
+	requestCounts []int
+	lastUsed     []time.Time
+	mu           sync.Mutex
+	counter      uint64
 }
 
 func NewKeyPool(keys []string) *KeyPool {
 	return &KeyPool{
-		keys:      keys,
-		cooldowns: make([]time.Time, len(keys)),
-		disabled:  make([]bool, len(keys)),
+		keys:         keys,
+		cooldowns:    make([]time.Time, len(keys)),
+		disabled:     make([]bool, len(keys)),
+		requestCounts: make([]int, len(keys)),
+		lastUsed:     make([]time.Time, len(keys)),
 	}
 }
 
@@ -59,6 +64,10 @@ func (p *KeyPool) Next() (int, string, bool) {
 	for i := 0; i < n; i++ {
 		idx := (start + i) % n
 		if !p.disabled[idx] && time.Now().After(p.cooldowns[idx]) {
+			// Reset request count if last used was > 60 seconds ago
+			if time.Since(p.lastUsed[idx]) > 60*time.Second {
+				p.requestCounts[idx] = 0
+			}
 			return idx, p.keys[idx], true
 		}
 	}
@@ -107,7 +116,50 @@ func (p *KeyPool) Status() string {
 			parts[i] = fmt.Sprintf("[%d]:cooling(%.0fs)", i, cd.Sub(now).Seconds())
 		}
 	}
-	return strings.Join(parts, "  ")
+	return strings.Join(parts, " ")
+}
+
+// GetKeyDetails returns detailed status for each key in the pool
+func (p *KeyPool) GetKeyDetails() []map[string]interface{} {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := time.Now()
+	details := make([]map[string]interface{}, len(p.keys))
+	for i := range p.keys {
+		keyDetail := map[string]interface{}{
+			"index":          i,
+			"key":            p.keys[i],
+			"disabled":       p.disabled[i],
+			"request_count":  p.requestCounts[i],
+			"last_used":      p.lastUsed[i].Format(time.RFC3339),
+			"cooldown_until": p.cooldowns[i].Format(time.RFC3339),
+		}
+
+		// Determine label
+		if p.disabled[i] {
+			keyDetail["status"] = "disabled"
+		} else if now.After(p.cooldowns[i]) {
+			if time.Since(p.lastUsed[i]) > 60*time.Second {
+				keyDetail["status"] = "usable"
+			} else if p.requestCounts[i] >= 40 {
+				keyDetail["status"] = "cooling down"
+			} else {
+				keyDetail["status"] = "ready"
+			}
+		} else {
+			keyDetail["status"] = fmt.Sprintf("cooling(%.0fs)", p.cooldowns[i].Sub(now).Seconds())
+		}
+		details[i] = keyDetail
+	}
+	return details
+}
+
+// IncrementRequestCount increments the request count for a key and updates its lastUsed timestamp
+func (p *KeyPool) IncrementRequestCount(idx int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.requestCounts[idx]++
+	p.lastUsed[idx] = time.Now()
 }
 
 // ── Config ────────────────────────────────────
@@ -190,11 +242,19 @@ func newServerState(cfg Config, pool *KeyPool) *ServerState {
 }
 
 func (s *ServerState) healthHandler(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	pool := s.pool
-	s.mu.RUnlock()
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status":"ok","keys":%d,"pool":"%s"}`, len(pool.keys), pool.Status())
+    s.mu.RLock()
+    pool := s.pool
+    s.mu.RUnlock()
+    w.Header().Set("Content-Type", "application/json")
+    
+    details := pool.GetKeyDetails()
+    jsonDetails, err := json.Marshal(details)
+    if err != nil {
+        http.Error(w, "failed to marshal key details", http.StatusInternalServerError)
+        return
+    }
+    
+    fmt.Fprintf(w, `{"status":"ok","keys":%d,"details":%s}`, len(pool.keys), jsonDetails)
 }
 
 func (s *ServerState) proxyHandler(w http.ResponseWriter, r *http.Request) {
